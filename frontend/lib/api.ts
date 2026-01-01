@@ -1,8 +1,12 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+// Use the internal Next.js API proxy to avoid CORS and hide backend URL
+// When running in the browser, call /api/proxy
+// When running on the server (SSR), call the backend directly
+const isBrowser = typeof window !== 'undefined';
+const API_URL = isBrowser ? '/api/proxy' : process.env.NEXT_PUBLIC_API_URL;
 
-if (!API_URL && typeof window !== 'undefined') {
+if (!API_URL && !isBrowser) {
   console.error('NEXT_PUBLIC_API_URL is not defined in .env');
 }
 

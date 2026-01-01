@@ -15,9 +15,24 @@ import { supabase } from './config/database';
 
 const app = express();
 
-// Request logging middleware (only in non-test environments)
+// Middleware
+// 1. CORS - MUST BE FIRST to handle preflight (OPTIONS) requests correctly
+app.use(cors({
+  origin: true, // Reflects the request origin, essential for local dev
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 2. JSON Parsing
+app.use(express.json());
+
+// 3. Logging (only in non-test environments)
 if (process.env.NODE_ENV !== 'test') {
   app.use((req: Request, res: Response, next: NextFunction) => {
+    // Skip logging for OPTIONS preflight requests
+    if (req.method === 'OPTIONS') return next();
+
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] ${req.method} ${req.path}`);
     if (req.body && Object.keys(req.body).length > 0) {
@@ -40,10 +55,6 @@ if (process.env.NODE_ENV !== 'test') {
     next();
   });
 }
-
-// Middleware
-app.use(cors());
-app.use(express.json());
 
 // Routes
 app.use('/auth', authRoutes);
