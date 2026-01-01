@@ -177,11 +177,48 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Valid poolId and amount are required' });
     }
 
-    // Check user balance
-    const user = await queryRow('users', { id: userId });
+    // Check user balances (prefer invested_balance, fallback to vault_balance)
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('invested_balance, vault_balance')
+      .eq('id', userId)
+      .single();
 
-    if (!user || parseFloat(user.balance.toString()) < amount) {
-      return res.status(400).json({ error: 'Insufficient balance' });
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const investedBalance = parseFloat(user.invested_balance?.toString() || '0');
+    const vaultBalance = parseFloat(user.vault_balance?.toString() || '0');
+    const totalAvailable = investedBalance + vaultBalance;
+
+    if (totalAvailable < amount) {
+      return res.status(400).json({ error: `Insufficient balance. Available: $${totalAvailable.toFixed(2)}` });
+    }
+
+    // Auto-transfer from vault to investment if needed
+    if (investedBalance < amount) {
+      const transferNeeded = amount - investedBalance;
+      const newVaultBalance = vaultBalance - transferNeeded;
+      const newInvestedBalance = investedBalance + transferNeeded;
+
+      await supabase
+        .from('users')
+        .update({
+          vault_balance: newVaultBalance,
+          invested_balance: newInvestedBalance,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId);
+
+      // Record the transfer
+      await supabase.from('balance_transfers').insert({
+        user_id: userId,
+        from_balance_type: 'vault',
+        to_balance_type: 'investment',
+        amount: transferNeeded,
+        status: 'completed',
+      });
     }
 
     // Check pool exists
@@ -191,10 +228,20 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Pool not found' });
     }
 
-    // Deduct balance
+    // Get updated invested_balance (after potential auto-transfer)
+    const { data: updatedUser } = await supabase
+      .from('users')
+      .select('invested_balance')
+      .eq('id', userId)
+      .single();
+
+    const currentInvestedBalance = parseFloat(updatedUser?.invested_balance?.toString() || '0');
+
+    // Deduct from invested_balance
+    const newInvestedBalance = currentInvestedBalance - amount;
     await supabase
       .from('users')
-      .update({ balance: user.balance - amount })
+      .update({ invested_balance: newInvestedBalance, updated_at: new Date().toISOString() })
       .eq('id', userId);
 
     // Create investment
@@ -262,11 +309,23 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response)
       .update({ is_active: false })
       .eq('id', id);
 
-    // Return funds to user balance
-    const user = await queryRow('users', { id: userId });
+    // Return funds to user invested_balance (so they can reinvest or transfer to vault)
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('invested_balance')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const currentInvestedBalance = parseFloat(user.invested_balance?.toString() || '0');
+    const newInvestedBalance = currentInvestedBalance + totalReturn;
+
     await supabase
       .from('users')
-      .update({ balance: user.balance + totalReturn })
+      .update({ invested_balance: newInvestedBalance, updated_at: new Date().toISOString() })
       .eq('id', userId);
 
     res.json({

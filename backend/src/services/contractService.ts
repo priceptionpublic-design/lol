@@ -16,17 +16,22 @@ const DEPOSIT_CONTRACT_ABI = [
 
 // Configuration
 const DEPOSIT_CONTRACT_ADDRESS = process.env.DEPOSIT_CONTRACT_ADDRESS || '';
-const BSC_RPC_URL = process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org/';
-const BSC_TESTNET_RPC_URL = process.env.BSC_TESTNET_RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545/';
+const USDC_TOKEN_ADDRESS = process.env.USDC_TOKEN_ADDRESS || '';
+const SEPOLIA_RPC = process.env.SEPOLIA_RPC || 'https://rpc.ankr.com/eth_sepolia';
+const ETHEREUM_MAINNET_RPC = process.env.ETHEREUM_MAINNET_RPC || 'https://rpc.ankr.com/eth';
 const USE_TESTNET = process.env.USE_TESTNET === 'true';
 
 if (!DEPOSIT_CONTRACT_ADDRESS) {
   console.warn('⚠️ DEPOSIT_CONTRACT_ADDRESS is not configured. Deposit verification will fail.');
 }
 
+if (!USDC_TOKEN_ADDRESS) {
+  console.warn('⚠️ USDC_TOKEN_ADDRESS is not configured.');
+}
+
 // Get provider
 function getProvider(): ethers.JsonRpcProvider {
-  const rpcUrl = USE_TESTNET ? BSC_TESTNET_RPC_URL : BSC_RPC_URL;
+  const rpcUrl = USE_TESTNET ? SEPOLIA_RPC : ETHEREUM_MAINNET_RPC;
   return new ethers.JsonRpcProvider(rpcUrl);
 }
 
@@ -188,14 +193,15 @@ export async function syncUserDepositsFromContract(userAddress: string): Promise
 }
 
 /**
- * Get contract configuration
+ * Get contract configuration for frontend
  */
 export function getContractConfig() {
   return {
-    contractAddress: DEPOSIT_CONTRACT_ADDRESS,
-    network: USE_TESTNET ? 'BSC Testnet' : 'BSC Mainnet',
-    rpcUrl: USE_TESTNET ? BSC_TESTNET_RPC_URL : BSC_RPC_URL,
-    configured: !!DEPOSIT_CONTRACT_ADDRESS
+    depositContractAddress: DEPOSIT_CONTRACT_ADDRESS,
+    usdcTokenAddress: USDC_TOKEN_ADDRESS,
+    network: USE_TESTNET ? 'Sepolia Testnet' : 'Ethereum Mainnet',
+    rpcUrl: USE_TESTNET ? SEPOLIA_RPC : ETHEREUM_MAINNET_RPC,
+    configured: !!(DEPOSIT_CONTRACT_ADDRESS && USDC_TOKEN_ADDRESS)
   };
 }
 

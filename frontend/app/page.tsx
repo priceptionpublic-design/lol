@@ -9,9 +9,9 @@ import {
   ArrowDownToLine, 
   ArrowUpFromLine, 
   History, 
-  ShieldCheck, 
   LogOut,
-  ChevronRight
+  ChevronRight,
+  TrendingUp
 } from 'lucide-react';
 import api from '@/lib/api';
 
@@ -78,7 +78,7 @@ export default function Home() {
         <header className="flex flex-col md:flex-row justify-between items-center mb-16 gap-6">
           <div className="text-center md:text-left flex items-center gap-4">
             <Image 
-              src="/logo.png" 
+              src="/logo.jpeg" 
               alt="Yieldium Logo" 
               width={56} 
               height={56}
@@ -124,22 +124,21 @@ export default function Home() {
           />
 
           <DashboardCard 
+            href="/invest"
+            icon={<TrendingUp className="w-8 h-8 text-green-400" />}
+            title="Invest"
+            description="Invest in pools and earn passive income with APY returns."
+            gradient="group-hover:from-green-500/20 group-hover:to-emerald-500/20"
+            borderColor="group-hover:border-green-500/50"
+          />
+
+          <DashboardCard 
             href="/transactions"
             icon={<History className="w-8 h-8 text-emerald-400" />}
             title="Transactions"
             description="View your complete deposit and withdrawal history."
             gradient="group-hover:from-emerald-500/20 group-hover:to-teal-500/20"
             borderColor="group-hover:border-emerald-500/50"
-          />
-
-          {/* Only emphasize Admin if relevant, otherwise style differently */}
-          <DashboardCard 
-            href="/admin/withdrawals"
-            icon={<ShieldCheck className="w-8 h-8 text-orange-400" />}
-            title="Admin Console"
-            description="Review and approve pending withdrawal requests."
-            gradient="group-hover:from-orange-500/20 group-hover:to-red-500/20"
-            borderColor="group-hover:border-orange-500/50"
           />
 
         </div>
