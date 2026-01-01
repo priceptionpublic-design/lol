@@ -57,6 +57,15 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 // Routes
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Welcome to Yieldium API',
+    status: 'online',
+    version: '2.0.0',
+    documentation: 'See README for API usage'
+  });
+});
+
 app.use('/auth', authRoutes);
 app.use('/pools', poolsRoutes);
 app.use('/deposits', depositsRoutes);
