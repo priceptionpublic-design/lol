@@ -1,0 +1,34 @@
+services:
+  frontend:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yieldium-frontend
+    # Port mapping not needed with host network mode
+    # ports:
+    #   - "3000:3000"
+    environment:
+      # NEXT_PUBLIC_* envs are baked at build time, but can override at runtime
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080}
+      - NEXT_PUBLIC_USE_TESTNET=${NEXT_PUBLIC_USE_TESTNET:-false}
+      - NEXT_PUBLIC_APP_DOWNLOAD_URL=${NEXT_PUBLIC_APP_DOWNLOAD_URL:-}
+    # Network not needed with host network mode
+    # networks:
+    #   - yieldium-network
+    # Use host network mode (bypasses Docker networking, binds directly to host)
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+# Network section not needed with host network mode
+# networks:
+#   yieldium-network:
+#     driver: bridge
+#     external: true
+
