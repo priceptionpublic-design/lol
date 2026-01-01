@@ -24,7 +24,7 @@ async function proxyRequest(req: NextRequest, path: string[]) {
   let backendUrl = process.env.NEXT_PUBLIC_API_URL;
   
   if (!backendUrl) {
-    return NextResponse.json({ error: 'Backend URL not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'Backend URL not configured' , backendUrl: backendUrl }, { status: 500 });
   }
 
   // Fix 0.0.0.0 for server-side internal calls

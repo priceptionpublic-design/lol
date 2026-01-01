@@ -116,7 +116,7 @@ router.get('/stats', authenticateToken, requireAdmin, async (req: AuthRequest, r
     // Total deposits
     const { data: deposits, error } = await supabase
       .from('deposit_history')
-      .select('amount');
+      .select('amount, wallet_address');
 
     if (error) throw error;
 

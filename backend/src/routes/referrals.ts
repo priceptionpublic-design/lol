@@ -223,35 +223,27 @@ async function getReferralChain(userId: string): Promise<any[]> {
   let level = 0;
 
   while (currentUserId && level < 7) {
-    const { data: user } = await supabase
-      .from('users')
-      .select('id, referrer_id, username, email, referral_code')
-      .eq('id', currentUserId)
-      .single();
+    const foundUser = await queryRow('users', { id: currentUserId });
 
-    if (!user || !user.referrer_id) {
+    if (!foundUser || !foundUser.referrer_id) {
       break;
     }
 
-    const { data: referrer } = await supabase
-      .from('users')
-      .select('id, username, email, referral_code')
-      .eq('id', user.referrer_id)
-      .single();
+    const referrer = await queryRow('users', { id: foundUser.referrer_id });
 
-    if (referrer) {
-      chain.push({
-        level: level + 1,
-        user_id: referrer.id,
-        username: referrer.username,
-        email: referrer.email,
-        referral_code: referrer.referral_code,
-      });
-      currentUserId = referrer.id;
-      level++;
-    } else {
+    if (!referrer) {
       break;
     }
+
+    chain.push({
+      level: level + 1,
+      user_id: referrer.id,
+      username: referrer.username,
+      email: referrer.email,
+      referral_code: referrer.referral_code,
+    });
+    currentUserId = referrer.id;
+    level++;
   }
 
   return chain;
