@@ -5,12 +5,36 @@ if (!DEPOSIT_CONTRACT_ADDRESS && typeof window !== 'undefined') {
   console.warn('⚠️ DEPOSIT_CONTRACT_ADDRESS is not configured. Deposits will not work.');
 }
 
-// Backend API URL
-export const API_URL = process.env.NEXT_PUBLIC_API_URL;
+// Backend API URL with automatic sanitization
+const getBaseApiUrl = () => {
+  let url = process.env.NEXT_PUBLIC_API_URL;
+  
+  if (!url) {
+    if (typeof window !== 'undefined') {
+      console.error('NEXT_PUBLIC_API_URL is not defined in .env');
+    }
+    return '';
+  }
 
-if (!API_URL && typeof window !== 'undefined') {
-  console.error('NEXT_PUBLIC_API_URL is not defined in .env');
-}
+  // 1. Remove trailing slashes
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1);
+  }
+
+  // 2. Fix 0.0.0.0 for client-side environments (CORS issues)
+  if (typeof window !== 'undefined' && url.includes('0.0.0.0')) {
+    url = url.replace('0.0.0.0', 'localhost');
+  }
+
+  // 3. Fix 0.0.0.0 for server-side environments (Docker internal connectivity)
+  if (typeof window === 'undefined' && url.includes('0.0.0.0')) {
+    url = url.replace('0.0.0.0', 'localhost'); // Usually localhost on server works better
+  }
+
+  return url;
+};
+
+export const API_URL = getBaseApiUrl();
 
 // Mobile app download link for landing CTA
 export const APP_DOWNLOAD_URL = process.env.NEXT_PUBLIC_APP_DOWNLOAD_URL || '';

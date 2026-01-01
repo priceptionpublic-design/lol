@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { API_URL as backendUrl } from '@/lib/config';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
@@ -21,21 +22,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ p
 }
 
 async function proxyRequest(req: NextRequest, path: string[]) {
-  let backendUrl = process.env.NEXT_PUBLIC_API_URL;
-  
   if (!backendUrl) {
-    return NextResponse.json({ error: 'Backend URL not configured' , backendUrl: backendUrl }, { status: 500 });
-  }
-
-  // Fix 0.0.0.0 for server-side internal calls
-  if (backendUrl.includes('0.0.0.0')) {
-    backendUrl = backendUrl.replace('0.0.0.0', 'localhost');
+    return NextResponse.json({ 
+      error: 'Backend URL not configured', 
+      backendUrl: backendUrl 
+    }, { status: 500 });
   }
 
   // Construct the target URL
   const targetPath = path.join('/');
   const searchParams = req.nextUrl.searchParams.toString();
-  const targetUrl = `${backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl}/${targetPath}${searchParams ? `?${searchParams}` : ''}`;
+  const targetUrl = `${backendUrl}/${targetPath}${searchParams ? `?${searchParams}` : ''}`;
 
   console.log(`[PROXY] Forwarding ${req.method} request to: ${targetUrl}`);
 
@@ -47,7 +44,12 @@ async function proxyRequest(req: NextRequest, path: string[]) {
     // Get the request body if it's not a GET/HEAD request
     let body: any = null;
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      body = await req.blob();
+      try {
+        body = await req.blob();
+      } catch (e) {
+        // Handle empty bodies or parsing errors
+        body = null;
+      }
     }
 
     const response = await fetch(targetUrl, {
@@ -78,4 +80,3 @@ async function proxyRequest(req: NextRequest, path: string[]) {
     }, { status: 502 });
   }
 }
-
