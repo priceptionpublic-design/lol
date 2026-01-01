@@ -61,7 +61,7 @@ echo "⏳ Waiting for container to start..."
 sleep 5
 
 # Check health
-if curl -f http://localhost:8080/health > /dev/null 2>&1; then
+if curl -f https://lol-dpvs.onrender.com/health > /dev/null 2>&1; then
     echo "✅ Container is healthy!"
 else
     echo "⚠️  Container started but health check failed. Check logs:"

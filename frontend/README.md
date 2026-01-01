@@ -23,7 +23,7 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 Add a `.env.local` file in `frontend/`:
 
 ```
-NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_API_URL=https://lol-dpvs.onrender.com
 NEXT_PUBLIC_USE_TESTNET=false
 NEXT_PUBLIC_APP_DOWNLOAD_URL=https://example.com/your-app-download
 ```

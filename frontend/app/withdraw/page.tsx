@@ -97,7 +97,7 @@ export default function WithdrawPage() {
 
       alert('Withdrawal request submitted successfully! Admin will process it shortly and send USDC to your registered wallet address.');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to submit withdrawal request');
+      setError(err.response?.data?.error || err.message || 'Failed to submit withdrawal request');
     } finally {
       setLoading(false);
     }

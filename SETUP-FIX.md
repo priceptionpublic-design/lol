@@ -94,7 +94,7 @@ The mobile app is showing "Network Error" because the backend isn't running or i
    - File: `mobile-app/lib/api.ts`
    - Should be: `http://YOUR_COMPUTER_IP:8080` (not localhost if on physical device)
 
-3. **For iOS Simulator:** Use `http://localhost:8080`
+3. **For iOS Simulator:** Use `https://lol-dpvs.onrender.com`
 4. **For Android Emulator:** Use `http://10.0.2.2:8080`
 5. **For Physical Device:** Use your computer's IP address
 

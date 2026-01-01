@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL && typeof window !== 'undefined') {
+  console.error('NEXT_PUBLIC_API_URL is not defined in .env');
+}
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -20,7 +24,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 errors
+// Handle errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -30,6 +34,12 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+    
+    // If there's no response from the server, it's a network issue
+    if (!error.response) {
+      error.message = 'Network issue: Unable to connect to the server. Please check your internet connection or try again later.';
+    }
+    
     return Promise.reject(error);
   }
 );

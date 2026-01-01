@@ -121,7 +121,7 @@ export default function InvestPage() {
       setInvestAmount('');
       alert(`Successfully invested $${amount.toFixed(2)} in ${selectedPool.pair}!`);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Investment failed');
+      setError(err.response?.data?.error || err.message || 'Investment failed');
     } finally {
       setInvesting(null);
     }

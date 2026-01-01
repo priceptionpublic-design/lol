@@ -1,298 +1,465 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
-
-interface BalanceData {
-  vault: number;
-  invested: number;
-  referral: number;
-  total: number;
-}
+import { 
+  ArrowLeft, 
+  Wallet, 
+  TrendingUp, 
+  Gift, 
+  Vault, 
+  ArrowLeftRight, 
+  Copy, 
+  Share2, 
+  Users, 
+  CheckCircle2, 
+  AlertCircle,
+  ChevronRight,
+  RefreshCw,
+  DollarSign,
+  Activity,
+  Award,
+  Zap
+} from 'lucide-react';
+import { getUserBalances, transferBalance, getReferralStats, claimReferral, getInvestments, UserBalances, ReferralStats } from '@/lib/balances';
 
 export default function BalancesPage() {
   const router = useRouter();
-  const [balances, setBalances] = useState<BalanceData | null>(null);
+  const [balances, setBalances] = useState<UserBalances | null>(null);
+  const [referralData, setReferralData] = useState<ReferralStats | null>(null);
+  const [investmentsData, setInvestmentsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [transferFrom, setTransferFrom] = useState<'vault' | 'investment'>('vault');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Transfer state
   const [transferAmount, setTransferAmount] = useState('');
-  const [transferring, setTransferring] = useState(false);
-  const [claiming, setClaiming] = useState(false);
+  const [transferFrom, setTransferFrom] = useState<'vault' | 'investment'>('vault');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   useEffect(() => {
-    fetchBalances();
-    const interval = setInterval(fetchBalances, 5000); // Refresh every 5s to show growth
+    loadAllData();
+    const interval = setInterval(loadAllData, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
-  const fetchBalances = async () => {
+  const loadAllData = async () => {
     try {
-      const response = await api.get<BalanceData>('/balances/me');
-      setBalances(response.data);
+      const [balRes, refRes, invRes] = await Promise.all([
+        getUserBalances(),
+        getReferralStats(),
+        getInvestments()
+      ]);
+      setBalances(balRes);
+      setReferralData(refRes);
+      setInvestmentsData(invRes);
     } catch (err: any) {
-      if (err.response?.status === 401) {
-        router.push('/login');
-      }
+      console.error('Error loading data:', err);
+      if (err.response?.status === 401) router.push('/login');
+      setError('Failed to load balance and referral data.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadAllData();
+    setIsRefreshing(false);
+  };
+
+  // Earning Calculations
+  const dailyInterest = useMemo(() => {
+    if (!investmentsData?.investments) return 0;
+    return investmentsData.investments.reduce((sum: number, inv: any) => {
+      if (inv.isActive) {
+        const apy = inv.pool.apyValue || 0;
+        return sum + (inv.stakedAmount * (apy / 100)) / 365;
+      }
+      return sum;
+    }, 0);
+  }, [investmentsData]);
+
+  const dailyReferralEarnings = useMemo(() => {
+    if (!referralData?.stats) return 0;
+    return (referralData.stats.totalCommissions || 0) / 30; // 30-day estimate
+  }, [referralData]);
+
+  const totalDailyIncome = dailyInterest + dailyReferralEarnings;
+
+  const handleCopyCode = () => {
+    if (referralData?.referralCode) {
+      navigator.clipboard.writeText(referralData.referralCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const handleTransfer = async () => {
     if (!transferAmount || parseFloat(transferAmount) <= 0) {
-      alert('Please enter a valid amount');
+      setError('Please enter a valid amount');
       return;
     }
 
-    const from = transferFrom;
-    const to = from === 'vault' ? 'investment' : 'vault';
     const amount = parseFloat(transferAmount);
-    const available = from === 'vault' ? (balances?.vault || 0) : (balances?.invested || 0);
+    const fromBalance = transferFrom === 'vault' ? balances?.vault : balances?.invested;
 
-    if (amount > available) {
-      alert(`Insufficient ${from} balance`);
+    if (amount > (fromBalance || 0)) {
+      setError(`Insufficient ${transferFrom} balance.`);
       return;
     }
 
     try {
-      setTransferring(true);
-      await api.post('/balances/transfer', { from, to, amount });
-      await fetchBalances();
-      setTransferModalOpen(false);
+      setIsTransferring(true);
+      setError(null);
+      await transferBalance(
+        transferFrom,
+        transferFrom === 'vault' ? 'investment' : 'vault',
+        amount
+      );
+      setSuccess(`Successfully transferred $${amount.toFixed(2)} to ${transferFrom === 'vault' ? 'investment' : 'vault'}.`);
       setTransferAmount('');
-      alert(`Successfully transferred $${amount.toFixed(2)} from ${from} to ${to}`);
+      await loadAllData();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Transfer failed');
+      setError(err.response?.data?.error || 'Transfer failed');
     } finally {
-      setTransferring(false);
+      setIsTransferring(false);
     }
   };
 
   const handleClaimReferral = async () => {
     if ((balances?.referral || 0) < 100) {
-      alert(`You need $${(100 - (balances?.referral || 0)).toFixed(2)} more to claim`);
+      setError(`Minimum claim amount is $100.00. You need $${(100 - (balances?.referral || 0)).toFixed(2)} more.`);
       return;
     }
 
-    const confirmed = confirm(`Claim $${balances?.referral.toFixed(2)} referral earnings to your vault?`);
-    if (!confirmed) return;
-
     try {
-      setClaiming(true);
-      await api.post('/balances/claim-referral');
-      await fetchBalances();
-      alert('Referral earnings claimed successfully!');
+      setLoading(true);
+      await claimReferral();
+      setSuccess('Referral earnings claimed successfully! Funds added to your vault.');
+      await loadAllData();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Claim failed');
+      setError(err.response?.data?.error || 'Claim failed');
     } finally {
-      setClaiming(false);
+      setLoading(false);
     }
   };
 
-  if (loading) {
+  if (loading && !balances) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-4 flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+          <p className="text-blue-400 font-medium">Synchronizing financial data...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-4">
-      <div className="max-w-4xl mx-auto">
-        <button
-          onClick={() => router.back()}
-          className="mb-6 text-gray-400 hover:text-white transition"
-        >
-          ← Back
-        </button>
-
-        <div className="bg-gray-800 rounded-2xl p-6 shadow-2xl mb-6">
-          <h1 className="text-3xl font-bold mb-2">Balance Management</h1>
-          <p className="text-gray-400 mb-6">Manage your vault, investment, and referral balances</p>
-
-          {/* Total Balance */}
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 mb-6">
-            <p className="text-sm text-white/80 mb-1">Total Balance</p>
-            <p className="text-4xl font-bold text-white">${balances?.total.toFixed(2) || '0.00'}</p>
-          </div>
-
-          {/* Balance Breakdown */}
-          <div className="grid gap-4 mb-6">
-            {/* Vault */}
-            <div className="bg-gray-700 rounded-xl p-4 border border-gray-600">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-lg">Vault Balance</p>
-                    <p className="text-sm text-gray-400">Safe storage, ready to invest or withdraw</p>
-                  </div>
-                </div>
-                <p className="text-2xl font-bold">${balances?.vault.toFixed(2) || '0.00'}</p>
-              </div>
-            </div>
-
-            {/* Invested */}
-            <div className="bg-gray-700 rounded-xl p-4 border border-green-600/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-lg text-green-400">Invested Balance 📈</p>
-                    <p className="text-sm text-gray-400">Earning yield automatically</p>
-                  </div>
-                </div>
-                <p className="text-2xl font-bold text-green-400">${balances?.invested.toFixed(2) || '0.00'}</p>
-              </div>
-            </div>
-
-            {/* Referral */}
-            <div className="bg-gray-700 rounded-xl p-4 border border-yellow-600/50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-lg">Referral Earnings</p>
-                    <p className="text-sm text-gray-400">
-                      {(balances?.referral || 0) >= 100
-                        ? 'Ready to claim! 🎉'
-                        : `$${(100 - (balances?.referral || 0)).toFixed(2)} more to claim`
-                      }
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleClaimReferral}
-                  disabled={(balances?.referral || 0) < 100 || claiming}
-                  className={`px-6 py-2 rounded-lg font-medium transition ${
-                    (balances?.referral || 0) >= 100
-                      ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  {claiming ? 'Claiming...' : `$${balances?.referral.toFixed(2) || '0.00'}`}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Transfer Button */}
-          <button
-            onClick={() => setTransferModalOpen(true)}
-            className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg p-4 font-medium transition flex items-center justify-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-            </svg>
-            Transfer Between Vault & Investment
-          </button>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 selection:bg-blue-500/30">
+      {/* Background decoration */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] bg-purple-600/5 rounded-full blur-[120px]" />
       </div>
 
-      {/* Transfer Modal */}
-      {transferModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Transfer Money</h2>
-              <button
-                onClick={() => setTransferModalOpen(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ✕
-              </button>
+      <div className="relative z-10 max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-10">
+          <button onClick={() => router.back()} className="group flex items-center gap-2 text-slate-400 hover:text-white transition-all">
+            <div className="p-2 rounded-full bg-slate-900 border border-slate-800 group-hover:border-slate-700">
+              <ArrowLeft size={18} />
+            </div>
+            <span className="font-medium">Back to Dashboard</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="hidden md:inline text-xs font-bold text-slate-500 uppercase tracking-widest">Auto-refresh active</span>
+            <button 
+              onClick={handleRefresh} 
+              disabled={isRefreshing} 
+              className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-all active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Alerts */}
+        {(error || success) && (
+          <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-start gap-3 text-red-400 text-sm shadow-lg shadow-red-900/10">
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                <p className="font-medium">{error}</p>
+              </div>
+            )}
+            {success && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-start gap-3 text-emerald-400 text-sm shadow-lg shadow-emerald-900/10">
+                <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+                <p className="font-medium">{success}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid lg:grid-cols-12 gap-8">
+          {/* Main Column */}
+          <div className="lg:col-span-8 space-y-8">
+            
+            {/* Top Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+                <Activity size={20} className="text-blue-400 mb-3" />
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Active Pools</p>
+                <p className="text-2xl font-bold">{investmentsData?.investments?.filter((i:any) => i.isActive).length || 0}</p>
+              </div>
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors">
+                <TrendingUp size={20} className="text-emerald-400 mb-3" />
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Daily Interest</p>
+                <p className="text-2xl font-bold text-emerald-400">+${dailyInterest.toFixed(2)}</p>
+              </div>
+              <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors col-span-2 md:col-span-1">
+                <Award size={20} className="text-purple-400 mb-3" />
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Total Earned</p>
+                <p className="text-2xl font-bold">${(investmentsData?.summary?.totalEarnings || 0).toFixed(2)}</p>
+              </div>
             </div>
 
-            {/* Direction Selector */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <button
-                onClick={() => setTransferFrom('vault')}
-                className={`p-4 rounded-lg border-2 transition ${
-                  transferFrom === 'vault'
-                    ? 'border-blue-500 bg-blue-500/20'
-                    : 'border-gray-600 bg-gray-700'
-                }`}
-              >
-                <p className="font-medium">Vault → Investment</p>
-                <p className="text-sm text-gray-400 mt-1">Start earning yield</p>
-              </button>
-              <button
-                onClick={() => setTransferFrom('investment')}
-                className={`p-4 rounded-lg border-2 transition ${
-                  transferFrom === 'investment'
-                    ? 'border-blue-500 bg-blue-500/20'
-                    : 'border-gray-600 bg-gray-700'
-                }`}
-              >
-                <p className="font-medium">Investment → Vault</p>
-                <p className="text-sm text-gray-400 mt-1">Move to safe storage</p>
-              </button>
+            {/* Premium Balance Card */}
+            <div className="relative group p-10 rounded-[32px] bg-linear-to-br from-slate-900 via-slate-900 to-blue-950 overflow-hidden border border-slate-800 shadow-2xl">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/10 rounded-full blur-[100px] -mr-48 -mt-48 transition-all group-hover:bg-blue-600/20"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-600/5 rounded-full blur-[80px] -ml-32 -mb-32"></div>
+              
+              <div className="relative z-10">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div>
+                    <div className="flex items-center gap-2.5 text-blue-400 mb-3">
+                      <div className="p-1.5 rounded-lg bg-blue-500/10">
+                        <Wallet size={16} />
+                      </div>
+                      <span className="text-xs font-bold uppercase tracking-[0.2em]">Live Portfolio Value</span>
+                    </div>
+                    <div className="text-6xl font-bold tracking-tighter mb-2">
+                      ${balances?.total.toFixed(2)}
+                    </div>
+                    <p className="text-slate-500 text-sm font-medium">Includes vault and active investments</p>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3">
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-md rounded-2xl p-4 pr-10">
+                      <p className="text-emerald-500/60 text-[10px] font-bold uppercase tracking-widest mb-1">Yielding</p>
+                      <p className="text-xl font-bold text-emerald-400">${balances?.invested.toFixed(2)}</p>
+                    </div>
+                    <div className="bg-blue-500/10 border border-blue-500/20 backdrop-blur-md rounded-2xl p-4 pr-10">
+                      <p className="text-blue-500/60 text-[10px] font-bold uppercase tracking-widest mb-1">Available</p>
+                      <p className="text-xl font-bold text-blue-400">${balances?.vault.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Info Banner */}
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4 text-sm text-blue-400">
-              {transferFrom === 'vault'
-                ? '💰 Money in Investment earns yield automatically'
-                : '🔒 Money in Vault is safe but doesn\'t earn yield'
-              }
+            {/* Daily Income Breakdown */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[28px] p-8">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400">
+                    <Zap size={22} />
+                  </div>
+                  <h2 className="text-xl font-bold">Projected Daily Income</h2>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-emerald-400">+${totalDailyIncome.toFixed(2)}/day</p>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Est. ROI</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="flex items-center gap-4 p-5 rounded-2xl bg-slate-800/30 border border-slate-800/50 hover:border-slate-700 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                    <TrendingUp size={24} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">${dailyInterest.toFixed(2)}</p>
+                    <p className="text-xs text-slate-500">Staking Interest</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 p-5 rounded-2xl bg-slate-800/30 border border-slate-800/50 hover:border-slate-700 transition-all">
+                  <div className="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
+                    <Users size={24} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">${dailyReferralEarnings.toFixed(2)}</p>
+                    <p className="text-xs text-slate-500">Referral Comm.</p>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Amount Input */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2">
-                Amount
-                <span className="text-gray-400 ml-2">
-                  Available: ${(transferFrom === 'vault' ? balances?.vault : balances?.invested)?.toFixed(2) || '0.00'}
-                </span>
-              </label>
-              <div className="flex gap-2">
-                <div className="flex-1 bg-gray-700 rounded-lg p-3 flex items-center">
-                  <span className="text-xl mr-2">$</span>
+            {/* Transfer Utility */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[28px] p-8 overflow-hidden relative">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400">
+                  <ArrowLeftRight size={22} />
+                </div>
+                <h2 className="text-xl font-bold">Capital Relocation</h2>
+              </div>
+
+              <div className="max-w-md mx-auto space-y-6">
+                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-[20px] border border-slate-800">
+                  <button 
+                    onClick={() => setTransferFrom('vault')}
+                    className={`flex-1 py-3.5 px-4 rounded-[14px] text-xs font-bold uppercase tracking-widest transition-all ${transferFrom === 'vault' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    Vault → Invest
+                  </button>
+                  <button 
+                    onClick={() => setTransferFrom('investment')}
+                    className={`flex-1 py-3.5 px-4 rounded-[14px] text-xs font-bold uppercase tracking-widest transition-all ${transferFrom === 'investment' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    Invest → Vault
+                  </button>
+                </div>
+
+                <div className="relative group">
+                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600 text-xl font-bold">$</span>
                   <input
                     type="number"
                     value={transferAmount}
                     onChange={(e) => setTransferAmount(e.target.value)}
                     placeholder="0.00"
-                    className="bg-transparent flex-1 outline-none text-lg"
-                    step="0.01"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-5 pl-10 text-white text-lg font-bold placeholder-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent transition-all"
                   />
+                  <button 
+                    onClick={() => setTransferAmount(String(transferFrom === 'vault' ? balances?.vault : balances?.invested))}
+                    className="absolute right-5 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg bg-blue-500/10 text-[10px] font-black text-blue-400 hover:bg-blue-500 hover:text-white transition-all uppercase tracking-tighter"
+                  >
+                    Max
+                  </button>
                 </div>
+
                 <button
-                  onClick={() => setTransferAmount(String(transferFrom === 'vault' ? balances?.vault : balances?.invested))}
-                  className="bg-blue-600 hover:bg-blue-700 px-4 rounded-lg font-medium transition"
+                  onClick={handleTransfer}
+                  disabled={isTransferring || !transferAmount || parseFloat(transferAmount) <= 0}
+                  className="w-full bg-slate-100 hover:bg-white text-slate-950 font-black text-sm uppercase tracking-[0.2em] py-5 rounded-2xl transition-all active:scale-[0.98] disabled:opacity-20 disabled:cursor-not-allowed shadow-xl shadow-white/5"
                 >
-                  MAX
+                  {isTransferring ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <RefreshCw className="animate-spin" size={18} />
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    'Relocate Funds'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="lg:col-span-4 space-y-8">
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
+              <Gift size={22} className="text-purple-400" />
+              Rewards Hub
+            </h2>
+
+            {/* Referral Earnings Card */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[28px] p-8 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-purple-600 to-indigo-600"></div>
+              
+              <div className="space-y-8">
+                <div>
+                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-3">Reward Balance</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-black text-white">${balances?.referral.toFixed(2)}</span>
+                    <span className="text-slate-500 font-bold text-xs">USDC</span>
+                  </div>
+                </div>
+
+                {/* Progress Circle Visual */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Payout Threshold</span>
+                    <span className="text-xs font-bold text-slate-300">$100.00</span>
+                  </div>
+                  <div className="h-3 bg-slate-950 rounded-full border border-slate-800 overflow-hidden p-0.5">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                        (balances?.referral || 0) >= 100 ? 'bg-linear-to-r from-emerald-500 to-teal-400' : 'bg-linear-to-r from-blue-600 to-indigo-500'
+                      }`}
+                      style={{ width: `${Math.min(100, ((balances?.referral || 0) / 100) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-center font-medium text-slate-500">
+                    {(balances?.referral || 0) >= 100 
+                      ? 'Threshold reached! ⚡' 
+                      : `${Math.min(100, ((balances?.referral || 0) / 100) * 100).toFixed(1)}% completed`}
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleClaimReferral}
+                  disabled={(balances?.referral || 0) < 100 || loading}
+                  className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all active:scale-[0.98] ${
+                    (balances?.referral || 0) >= 100 
+                      ? 'bg-linear-to-r from-emerald-600 to-teal-600 text-white shadow-xl shadow-emerald-900/20 hover:brightness-110' 
+                      : 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700'
+                  }`}
+                >
+                  Claim Rewards
                 </button>
               </div>
             </div>
 
-            {/* Transfer Button */}
-            <button
-              onClick={handleTransfer}
-              disabled={transferring}
-              className="w-full bg-blue-600 hover:bg-blue-700 rounded-lg p-4 font-medium transition disabled:opacity-50"
-            >
-              {transferring ? 'Transferring...' : 'Transfer'}
-            </button>
+            {/* Invite Link Card */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[28px] p-8">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500 mb-6">Partnership Program</h3>
+              <p className="text-xs text-slate-400 mb-6 leading-loose">
+                Earn commissions across <span className="text-white font-bold">7 generations</span> of your network. Your tier increases with network volume.
+              </p>
+              
+              <div className="space-y-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Shareable Identifier</p>
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 flex items-center justify-between group hover:border-slate-700 transition-all">
+                  <code className="text-xl font-black tracking-[0.3em] text-blue-400">{referralData?.referralCode}</code>
+                  <button onClick={handleCopyCode} className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-all active:scale-90">
+                    {copied ? <CheckCircle2 size={18} className="text-emerald-400" /> : <Copy size={18} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Levels Breakdown */}
+            <div className="bg-slate-900/40 border border-slate-800 rounded-[28px] p-8">
+              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-slate-500 mb-6">Generational Network</h3>
+              <div className="space-y-3">
+                {referralData?.stats.downlineByLevel.map((level) => (
+                  <div key={level.level} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800/50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black text-[10px]">
+                        G{level.level}
+                      </div>
+                      <p className="text-xs font-bold text-white">{level.count} Units</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-black text-emerald-400">${level.total_investments.toFixed(0)}</p>
+                    </div>
+                  </div>
+                ))}
+                {(!referralData?.stats.downlineByLevel || referralData?.stats.downlineByLevel.length === 0) && (
+                  <div className="text-center py-10">
+                    <Users size={32} className="text-slate-800 mx-auto mb-4" />
+                    <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">No connections detected</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
-

@@ -161,6 +161,49 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// Wallet Login
+router.post('/login-wallet', async (req: Request, res: Response) => {
+  try {
+    console.log('[AUTH] Wallet login request received');
+    const { walletAddress } = req.body;
+
+    if (!walletAddress) {
+      return res.status(400).json({ error: 'Wallet address is required' });
+    }
+
+    // Get user by wallet address
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('wallet_address', walletAddress)
+      .single();
+
+    if (error || !user) {
+      return res.status(404).json({ error: 'Wallet not registered. Please sign up first.' });
+    }
+
+    console.log('[AUTH] Wallet login successful for user:', user.id);
+    const token = generateToken(user.id, user.role);
+
+    res.json({
+      message: 'Login successful',
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        walletAddress: user.wallet_address,
+        balance: user.balance,
+        role: user.role,
+        referralCode: user.referral_code,
+      },
+      token,
+    });
+  } catch (error: any) {
+    console.error('[AUTH] Wallet login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get current user
 router.get('/me', async (req: Request, res: Response) => {
   try {

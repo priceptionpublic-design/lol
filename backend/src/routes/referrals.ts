@@ -11,7 +11,7 @@ const COMMISSION_PERCENTAGES = {
 };
 
 // Get user's referral code and stats
-router.get('/my-referral', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
 
@@ -21,17 +21,18 @@ router.get('/my-referral', authenticateToken, async (req: AuthRequest, res: Resp
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Get downline stats (recursive query)
+    // Get downline stats
     const downlineStats = await getDownlineStats(userId);
 
-    // Get total commissions earned
+    // Get total commissions earned from the database
+    // totalEarned = commissions already claimed or pending
     const { data: commissions } = await supabase
       .from('referral_commissions')
       .select('commission_amount, status')
       .eq('referrer_id', userId);
 
     const totalEarned = (commissions || [])
-      .filter((c: any) => c.status === 'paid')
+      .filter((c: any) => c.status === 'claimed')
       .reduce((sum: number, c: any) => sum + parseFloat(c.commission_amount.toString()), 0) || 0;
 
     const pendingEarned = (commissions || [])
@@ -289,12 +290,11 @@ async function getDownlineStats(userId: string): Promise<any[]> {
 
     const levelUserIds = levelUsers.map((u: any) => u.id);
     
-    // Get total deposits
+    // Get total deposits from deposit_history
     const { data: depositsData } = await supabase
-      .from('deposit_requests')
+      .from('deposit_history')
       .select('amount')
-      .in('user_id', levelUserIds)
-      .eq('status', 'verified');
+      .in('user_id', levelUserIds);
 
     const totalDeposits = (depositsData || [])
       .reduce((sum: number, d: any) => sum + parseFloat(d.amount.toString()), 0);
@@ -302,12 +302,12 @@ async function getDownlineStats(userId: string): Promise<any[]> {
     // Get total investments
     const { data: investmentsData } = await supabase
       .from('investments')
-      .select('amount')
+      .select('initial_amount')
       .in('user_id', levelUserIds)
       .eq('is_active', true);
 
     const totalInvestments = (investmentsData || [])
-      .reduce((sum: number, i: any) => sum + parseFloat(i.amount.toString()), 0);
+      .reduce((sum: number, i: any) => sum + parseFloat(i.initial_amount.toString()), 0);
 
     stats.push({
       level,

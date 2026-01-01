@@ -109,16 +109,25 @@ export default function Home() {
             href="/deposit"
             icon={<ArrowDownToLine className="w-8 h-8 text-blue-400" />}
             title="Deposit"
-            description="Send BNB to the master wallet address instantly."
+            description="Send USDC to the deposit contract instantly."
             gradient="group-hover:from-blue-500/20 group-hover:to-cyan-500/20"
             borderColor="group-hover:border-blue-500/50"
+          />
+
+          <DashboardCard 
+            href="/balances"
+            icon={<Wallet className="w-8 h-8 text-indigo-400" />}
+            title="Balances & Referrals"
+            description="Manage your vault, investments, and referral earnings."
+            gradient="group-hover:from-indigo-500/20 group-hover:to-purple-500/20"
+            borderColor="group-hover:border-indigo-500/50"
           />
 
           <DashboardCard 
             href="/withdraw"
             icon={<ArrowUpFromLine className="w-8 h-8 text-purple-400" />}
             title="Withdraw"
-            description="Request a payout. Requires 72h confirmation."
+            description="Request a payout to your registered wallet address."
             gradient="group-hover:from-purple-500/20 group-hover:to-pink-500/20"
             borderColor="group-hover:border-purple-500/50"
           />

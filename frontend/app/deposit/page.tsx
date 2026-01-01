@@ -61,6 +61,7 @@ export default function DepositPage() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [historyRes, statsRes] = await Promise.all([
         api.get('/deposits/my-history'),
         api.get('/deposits/my-stats')
@@ -68,8 +69,9 @@ export default function DepositPage() {
       
       setDepositHistory(historyRes.data.deposits || []);
       setStats(statsRes.data);
-    } catch (error) {
-      console.error('Failed to load deposit data:', error);
+    } catch (err: any) {
+      console.error('Failed to load deposit data:', err);
+      setError(err.response?.data?.error || err.message || 'Failed to load deposit history');
     } finally {
       setLoading(false);
     }
@@ -77,10 +79,12 @@ export default function DepositPage() {
 
   const loadContractInfo = async () => {
     try {
+      setError(null);
       const response = await api.get('/deposits/contract-info');
       setContractAddresses(response.data);
-    } catch (error) {
-      console.error('Failed to load contract info:', error);
+    } catch (err: any) {
+      console.error('Failed to load contract info:', err);
+      setError(err.response?.data?.error || err.message || 'Failed to load contract information');
     }
   };
 

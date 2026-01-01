@@ -215,17 +215,17 @@ yarn start
 ```bash
 # Get balances
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/balances/me
+  https://lol-dpvs.onrender.com/balances/me
 
 # Transfer $500 from vault to investment
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"from":"vault","to":"investment","amount":500}' \
-  http://localhost:8080/balances/transfer
+  https://lol-dpvs.onrender.com/balances/transfer
 
 # Claim referral (if ≥ $100)
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/balances/claim-referral
+  https://lol-dpvs.onrender.com/balances/claim-referral
 ```
 
 ## Growth Calculation Example

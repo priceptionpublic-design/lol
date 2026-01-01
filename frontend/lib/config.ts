@@ -6,7 +6,11 @@ if (!DEPOSIT_CONTRACT_ADDRESS && typeof window !== 'undefined') {
 }
 
 // Backend API URL
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+if (!API_URL && typeof window !== 'undefined') {
+  console.error('NEXT_PUBLIC_API_URL is not defined in .env');
+}
 
 // Mobile app download link for landing CTA
 export const APP_DOWNLOAD_URL = process.env.NEXT_PUBLIC_APP_DOWNLOAD_URL || '';

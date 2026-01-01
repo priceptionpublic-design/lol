@@ -46,7 +46,7 @@ sleep 5
 # Check health
 echo "🏥 Checking health..."
 for i in {1..10}; do
-    if curl -f http://localhost:8080/health > /dev/null 2>&1; then
+    if curl -f https://lol-dpvs.onrender.com/health > /dev/null 2>&1; then
         echo "✅ Container is healthy!"
         break
     fi
@@ -73,7 +73,7 @@ echo ""
 echo "📍 API is available at:"
 echo "   http://$(hostname -I | awk '{print $1}'):8080"
 echo "   or"
-echo "   http://localhost:8080"
+echo "   https://lol-dpvs.onrender.com"
 echo ""
 echo "🔍 Check logs: docker logs -f yieldium-backend"
 echo "🛑 Stop: docker-compose down"

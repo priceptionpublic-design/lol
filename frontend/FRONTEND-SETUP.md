@@ -32,8 +32,8 @@ ETHEREUM_MAINNET_RPC=https://rpc.ankr.com/eth
 The frontend gets contract addresses from the backend API automatically, but you can optionally set:
 
 ```env
-# API URL (defaults to http://localhost:8080)
-NEXT_PUBLIC_API_URL=http://localhost:8080
+# API URL (defaults to https://lol-dpvs.onrender.com)
+NEXT_PUBLIC_API_URL=https://lol-dpvs.onrender.com
 ```
 
 ---
