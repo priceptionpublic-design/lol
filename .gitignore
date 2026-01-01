@@ -1,0 +1,116 @@
+# Mobile app - exclude entire directory
+mobile-app/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+*.env
+.envrc
+
+# Private keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*private*
+*secret*
+*password*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.nuxt/
+.vuepress/dist/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port/
+.cache/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Backend specific
+backend/dist/
+backend/.env
+backend/.env.*
+backend/uploads/
+backend/temp/
+
+# Frontend specific
+frontend/.next/
+frontend/out/
+frontend/.env
+frontend/.env.*
+frontend/.vercel
+
+# Contracts specific
+contracts/.env
+contracts/.env.*
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+contracts/.forge_cache/
+
+# Supabase
+.supabase/
+
+# Misc
+*.zip
+*.tar.gz
+*.rar
+
