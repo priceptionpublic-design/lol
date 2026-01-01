@@ -12,6 +12,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.16",
     "@web3modal/siwe": "^5.1.11",
     "@web3modal/wagmi": "^5.1.11",
     "axios": "^1.13.2",
@@ -21,8 +22,8 @@
     "qrcode.react": "^4.2.0",
     "react": "19.2.1",
     "react-dom": "19.2.1",
-    "viem": "^2.42.1",
-    "wagmi": "^3.1.0"
+    "viem": "^2.43.4",
+    "wagmi": "^3.1.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

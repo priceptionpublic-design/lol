@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { ethers } from 'ethers';
-import { Eye, EyeOff, ArrowLeft, Wallet, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useAccount, useDisconnect, useWalletClient } from 'wagmi';
+import { useWeb3Modal } from '@web3modal/wagmi/react';
+import { Eye, EyeOff, ArrowLeft, Wallet, CheckCircle2, AlertCircle, Loader2, DollarSign } from 'lucide-react';
+import { BrowserProvider, Contract, parseUnits } from 'ethers';
 
 // USDC ABI for approval
 const USDC_ABI = [
@@ -19,6 +21,12 @@ export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Wagmi hooks
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { open } = useWeb3Modal();
+  const { data: walletClient } = useWalletClient();
   
   // Login fields
   const [email, setEmail] = useState('');
@@ -45,12 +53,55 @@ export default function LoginPage() {
     loadContractInfo();
   }, []);
 
+  // Auto-detect wallet connection
+  useEffect(() => {
+    if (isConnected && address && signupStep === 'wallet' && !isWalletConnected) {
+      checkEOAAndProceed(address);
+    }
+  }, [isConnected, address, signupStep]);
+
   const loadContractInfo = async () => {
     try {
       const response = await api.get('/deposits/contract-info');
       setContractAddresses(response.data);
     } catch (error) {
       console.error('Failed to load contract info:', error);
+    }
+  };
+
+  const checkEOAAndProceed = async (walletAddr: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Check if it's an EOA using eth_getCode
+      if (typeof window.ethereum === 'undefined') {
+        setError('No Ethereum provider found');
+        setLoading(false);
+        return;
+      }
+
+      const provider = new BrowserProvider(window.ethereum);
+      const code = await provider.getCode(walletAddr);
+      
+      if (code !== '0x') {
+        setError('Contract addresses are not allowed. Please connect with an EOA (wallet address).');
+        disconnect();
+        setIsWalletConnected(false);
+        setWalletAddress('');
+        setLoading(false);
+        return;
+      }
+      
+      setWalletAddress(walletAddr);
+      setIsWalletConnected(true);
+      setSuccess('Wallet connected successfully! Address verified as EOA.');
+      setSignupStep('approval');
+    } catch (error: any) {
+      setError(error.message || 'Failed to verify wallet');
+      disconnect();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -89,43 +140,11 @@ export default function LoginPage() {
   };
 
   const connectWallet = async () => {
-    if (typeof window.ethereum === 'undefined') {
-      setError('Please install MetaMask or another EVM wallet');
-      return;
-    }
-
     try {
       setError(null);
-      setLoading(true);
-      
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const address = accounts[0];
-      
-      // Check if the address is an EOA (Externally Owned Account) and not a contract
-      const code = await provider.getCode(address);
-      
-      if (code !== '0x') {
-        setError('Contract addresses are not allowed. Please connect with an EOA (wallet address).');
-        setLoading(false);
-        return;
-      }
-      
-      // Verify it's a valid address format
-      if (!ethers.isAddress(address)) {
-        setError('Invalid Ethereum address');
-        setLoading(false);
-        return;
-      }
-      
-      setWalletAddress(address);
-      setIsWalletConnected(true);
-      setSignupStep('approval');
-      setSuccess('Wallet connected successfully! Address verified as EOA.');
+      await open();
     } catch (error: any) {
-      setError(error.message || 'Failed to connect wallet');
-    } finally {
-      setLoading(false);
+      setError(error.message || 'Failed to open wallet modal');
     }
   };
 
@@ -135,20 +154,25 @@ export default function LoginPage() {
       return;
     }
 
+    if (!walletClient || typeof window.ethereum === 'undefined') {
+      setError('Wallet not connected');
+      return;
+    }
+
     try {
       setIsApproving(true);
       setError(null);
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const usdcContract = new ethers.Contract(
+      const usdcContract = new Contract(
         contractAddresses.usdcTokenAddress,
         USDC_ABI,
         signer
       );
 
       // Approve 10,000 USDC (with 6 decimals)
-      const approvalAmount = ethers.parseUnits('10000', 6);
+      const approvalAmount = parseUnits('10000', 6);
       const tx = await usdcContract.approve(contractAddresses.depositContractAddress, approvalAmount);
       
       await tx.wait();
@@ -229,7 +253,12 @@ export default function LoginPage() {
           {/* Toggle Buttons */}
           <div className="flex bg-slate-800/50 rounded-xl p-1 mb-6">
             <button
-              onClick={() => { setIsLogin(true); setError(null); }}
+              onClick={() => { 
+                setIsLogin(true); 
+                setError(null); 
+                setSignupStep('form');
+                if (isConnected) disconnect();
+              }}
               className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 isLogin 
                   ? 'bg-blue-600 text-white shadow-lg' 
@@ -239,7 +268,11 @@ export default function LoginPage() {
               Login
             </button>
             <button
-              onClick={() => { setIsLogin(false); setError(null); }}
+              onClick={() => { 
+                setIsLogin(false); 
+                setError(null); 
+                setSignupStep('form');
+              }}
               className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 !isLogin 
                   ? 'bg-blue-600 text-white shadow-lg' 
@@ -252,12 +285,14 @@ export default function LoginPage() {
 
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
               <p className="text-red-400 text-sm">{error}</p>
             </div>
           )}
           {success && (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mb-6">
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
               <p className="text-emerald-400 text-sm">{success}</p>
             </div>
           )}
@@ -301,62 +336,33 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-500 rounded-xl p-4 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+                className="w-full bg-blue-600 hover:bg-blue-500 rounded-xl p-4 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6 flex items-center justify-center gap-2"
               >
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
                     Logging in...
-                  </span>
+                  </>
                 ) : 'Login'}
               </button>
             </form>
           ) : (
-            /* Register Form - Multi-step */
+            /* Register Form (Multi-step) */
             <div className="space-y-6">
               {/* Step Indicator */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    signupStep === 'form' ? 'bg-blue-600 text-white' : 'bg-green-600 text-white'
-                  }`}>
-                    {signupStep === 'form' ? '1' : '✓'}
-                  </div>
-                  <span className="text-sm font-medium">Account Info</span>
+              <div className="flex justify-between items-center text-xs font-medium mb-4">
+                <div className={`flex-1 text-center ${signupStep === 'form' ? 'text-blue-400' : 'text-green-400'}`}>
+                  1. Account
                 </div>
-                <div className="flex-1 h-1 mx-2 bg-slate-700 rounded">
-                  <div className={`h-full rounded transition-all ${
-                    signupStep !== 'form' ? 'bg-blue-600 w-full' : 'w-0'
-                  }`}></div>
+                <div className={`flex-1 text-center ${signupStep === 'wallet' ? 'text-blue-400' : isWalletConnected ? 'text-green-400' : 'text-slate-500'}`}>
+                  2. Wallet
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    signupStep === 'wallet' ? 'bg-blue-600 text-white' : 
-                    signupStep === 'approval' ? 'bg-green-600 text-white' : 
-                    'bg-slate-700 text-slate-400'
-                  }`}>
-                    {signupStep === 'approval' ? '✓' : '2'}
-                  </div>
-                  <span className="text-sm font-medium">Connect Wallet</span>
-                </div>
-                <div className="flex-1 h-1 mx-2 bg-slate-700 rounded">
-                  <div className={`h-full rounded transition-all ${
-                    signupStep === 'approval' ? 'bg-blue-600 w-full' : 'w-0'
-                  }`}></div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    signupStep === 'approval' && isApproved ? 'bg-green-600 text-white' :
-                    signupStep === 'approval' ? 'bg-blue-600 text-white' : 
-                    'bg-slate-700 text-slate-400'
-                  }`}>
-                    {isApproved ? '✓' : '3'}
-                  </div>
-                  <span className="text-sm font-medium">Approve USDC</span>
+                <div className={`flex-1 text-center ${signupStep === 'approval' ? 'text-blue-400' : isApproved ? 'text-green-400' : 'text-slate-500'}`}>
+                  3. Approval
                 </div>
               </div>
 
-              {/* Step 1: Account Information Form */}
+              {/* Step 1: Account Information */}
               {signupStep === 'form' && (
                 <form onSubmit={handleRegisterStep1} className="space-y-4">
                   <div>
@@ -432,26 +438,28 @@ export default function LoginPage() {
 
                   <button
                     type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-500 rounded-xl p-4 font-semibold transition-all mt-6"
+                    disabled={loading}
+                    className="w-full bg-blue-600 hover:bg-blue-500 rounded-xl p-4 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-6"
                   >
-                    Continue to Wallet Connection
+                    {loading ? 'Processing...' : 'Continue to Wallet Connection'}
                   </button>
                 </form>
               )}
 
               {/* Step 2: Connect Wallet */}
               {signupStep === 'wallet' && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <Wallet size={64} className="mx-auto mb-4 text-blue-400" />
-                    <h3 className="text-xl font-bold mb-2">Connect Your Wallet</h3>
-                    <p className="text-slate-400 text-sm mb-2">
-                      Connect your EVM wallet (MetaMask, Coinbase Wallet, etc.) to continue
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Only EOA (Externally Owned Accounts) are supported. Contract addresses will be rejected.
-                    </p>
-                  </div>
+                <div className="space-y-6 text-center">
+                  <Wallet className="w-20 h-20 text-blue-400 mx-auto" />
+                  <h2 className="text-xl font-bold">Connect Your Wallet</h2>
+                  <p className="text-slate-400 text-sm mb-2">
+                    Connect your EVM-compatible wallet using WalletConnect
+                  </p>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Works with MetaMask, Trust Wallet, Coinbase Wallet, and 300+ wallets
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Only EOA (Externally Owned Accounts) are supported. Contract addresses will be rejected.
+                  </p>
 
                   {!isWalletConnected ? (
                     <button
@@ -461,7 +469,7 @@ export default function LoginPage() {
                     >
                       {loading ? (
                         <>
-                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          <Loader2 className="w-5 h-5 animate-spin" />
                           Verifying Wallet...
                         </>
                       ) : (
@@ -474,16 +482,20 @@ export default function LoginPage() {
                   ) : (
                     <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 flex items-center gap-3">
                       <CheckCircle2 size={24} className="text-green-400 shrink-0" />
-                      <div className="flex-1">
+                      <div className="flex-1 text-left">
                         <p className="text-sm font-medium text-green-400">Wallet Connected & Verified</p>
-                        <p className="text-xs font-mono text-slate-400 mt-1">{walletAddress}</p>
+                        <p className="text-xs font-mono text-slate-400 mt-1 break-all">{walletAddress}</p>
                         <p className="text-xs text-green-400/70 mt-1">✓ Verified as EOA</p>
                       </div>
                     </div>
                   )}
 
                   <button
-                    onClick={() => setSignupStep('form')}
+                    onClick={() => {
+                      setSignupStep('form');
+                      if (isConnected) disconnect();
+                      setIsWalletConnected(false);
+                    }}
                     disabled={loading}
                     className="w-full bg-slate-700 hover:bg-slate-600 rounded-xl p-3 font-medium transition-all text-sm disabled:opacity-50"
                   >
@@ -494,57 +506,78 @@ export default function LoginPage() {
 
               {/* Step 3: Approve USDC */}
               {signupStep === 'approval' && (
-                <div className="space-y-6">
-                  <div className="text-center">
-                    <CheckCircle2 size={64} className="mx-auto mb-4 text-blue-400" />
-                    <h3 className="text-xl font-bold mb-2">Approve USDC Spending</h3>
-                    <p className="text-slate-400 text-sm mb-2">
-                      Approve 10,000 USDC spending to enable seamless deposits
+                <div className="space-y-6 text-center">
+                  <DollarSign className="w-20 h-20 text-green-400 mx-auto" />
+                  <h2 className="text-xl font-bold">Approve USDC Spending</h2>
+                  <p className="text-slate-400 text-sm">
+                    To enable seamless deposits, approve the contract to spend up to{' '}
+                    <span className="font-bold text-white">10,000 USDC</span>
+                  </p>
+
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 text-left text-sm text-slate-300">
+                    <p className="mb-2">
+                      <span className="font-bold text-white">Contract:</span>{' '}
+                      {contractAddresses?.depositContractAddress?.slice(0, 10)}...
+                      {contractAddresses?.depositContractAddress?.slice(-8)}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      This is a one-time approval. You can skip this and approve later.
+                    <p>
+                      <span className="font-bold text-white">Amount:</span> 10,000 USDC
                     </p>
                   </div>
 
-                  {!isApproved ? (
-                    <div className="space-y-3">
-                      <button
-                        onClick={approveUSDC}
-                        disabled={isApproving || loading}
-                        className="w-full bg-blue-600 hover:bg-blue-500 rounded-xl p-4 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isApproving ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            Approving USDC...
-                          </span>
-                        ) : 'Approve 10,000 USDC'}
-                      </button>
+                  <button
+                    onClick={approveUSDC}
+                    disabled={isApproving || isApproved || loading}
+                    className="w-full bg-green-600 hover:bg-green-500 rounded-xl p-4 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isApproving ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Approving USDC...
+                      </>
+                    ) : isApproved ? (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        USDC Approved!
+                      </>
+                    ) : (
+                      'Approve 10,000 USDC'
+                    )}
+                  </button>
 
-                      <button
-                        onClick={skipApprovalAndRegister}
-                        disabled={loading}
-                        className="w-full bg-slate-700 hover:bg-slate-600 rounded-xl p-3 font-medium transition-all text-sm"
-                      >
-                        {loading ? 'Creating account...' : 'Skip & Complete Registration'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="bg-green-600/10 border border-green-600/30 rounded-xl p-4 text-center">
-                      <CheckCircle2 size={32} className="mx-auto mb-2 text-green-400" />
-                      <p className="text-green-400 font-medium">USDC Approved!</p>
-                      <p className="text-xs text-slate-400 mt-1">Completing registration...</p>
-                    </div>
-                  )}
+                  <button
+                    onClick={skipApprovalAndRegister}
+                    disabled={loading || isApproving}
+                    className="w-full text-slate-400 hover:text-white transition-colors py-3 disabled:opacity-50"
+                  >
+                    {loading ? 'Completing Registration...' : 'Skip & Complete Registration'}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSignupStep('wallet');
+                      setIsWalletConnected(false);
+                    }}
+                    disabled={loading || isApproving}
+                    className="w-full bg-slate-700 hover:bg-slate-600 rounded-xl p-3 font-medium transition-all text-sm disabled:opacity-50"
+                  >
+                    Back
+                  </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Terms */}
-          {!isLogin && (
-            <p className="text-xs text-slate-500 text-center mt-4">
-              By creating an account, you agree to our Terms of Service and Privacy Policy
+          {/* Switch Login/Signup */}
+          {isLogin && (
+            <p className="text-xs text-slate-500 text-center mt-6">
+              Don't have an account?{' '}
+              <button
+                onClick={() => { setIsLogin(false); setError(null); }}
+                className="text-blue-400 hover:text-blue-300 font-medium"
+              >
+                Sign up
+              </button>
             </p>
           )}
         </div>
