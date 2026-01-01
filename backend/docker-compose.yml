@@ -1,0 +1,38 @@
+services:
+  backend:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yieldium-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      # Add your environment variables here or use .env file
+      # - DATABASE_URL=${DATABASE_URL}
+      # - DATABASE_AUTH_TOKEN=${DATABASE_AUTH_TOKEN}
+      # - JWT_SECRET=${JWT_SECRET}
+      # - WEBSITE_URL=${WEBSITE_URL}
+    env_file:
+      - .env
+    networks:
+      - yieldium-network
+    # Alternative: Use host network mode (bypasses Docker networking, removes need for port mapping)
+    # Uncomment below and comment out 'networks' and 'ports' if needed:
+    # network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  yieldium-network:
+    driver: bridge
+
